@@ -120,6 +120,12 @@ def mark_link_complete(context_id: str) -> None:
         conn.execute("UPDATE link SET complete = 1 WHERE context_id = ?", (context_id,))
 
 
+def mark_all_links_complete() -> None:
+    """Close out every unfinished link (used when a task fails)."""
+    with _connect() as conn:
+        conn.execute("UPDATE link SET complete = 1 WHERE complete = 0")
+
+
 def get_incomplete_link() -> dict | None:
     """Most recent unfinished link, used to resume after a crash."""
     with _connect() as conn:

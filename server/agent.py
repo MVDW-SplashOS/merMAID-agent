@@ -7,7 +7,7 @@ import json
 from . import db
 from .providers import send_request
 from .state import get_agent_type, get_context_id
-from .tools import run_tool, tools_for
+from .registry import registry
 
 
 def execute_agent() -> None:
@@ -25,7 +25,7 @@ def execute_agent() -> None:
     # without finishing, stop after this many iterations.
     max_iterations = 200
     for _ in range(max_iterations):
-        response = send_request(agent_type, context, tools_for(agent_type))
+        response = send_request(agent_type, context, registry.tools_for(agent_type))
         content = response.get("content", "")
         tool_calls = response.get("tool_calls") or []
 
@@ -45,7 +45,13 @@ def execute_agent() -> None:
                 args = {}
 
             print(f"--> tool: {name} {args}")
-            result = run_tool(name, args)
+            result = registry.run(name, args)
+            # custom tools return a JSON string; built-ins return a dict
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except json.JSONDecodeError:
+                    result = {"result": result}
 
             # bash/launch_agent/done switch the active context; re-read it.
             context_id = get_context_id()
@@ -60,6 +66,9 @@ def execute_agent() -> None:
             # own execute_agent() run takes over.
             if result.get("action") == "return":
                 return
+
+            # Read-only tools: feed the result back so the model sees it.
+            db.add_context(context_id, "tool", json.dumps(result), name)
     else:
         print(
             f"! agent {agent_type} hit the {max_iterations}-iteration limit; "
